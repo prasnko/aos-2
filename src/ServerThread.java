@@ -9,11 +9,17 @@ import java.io.PrintWriter;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.UnknownHostException;
+import java.util.Comparator;
+import java.util.LinkedList;
+import java.util.Map;
+import java.util.PriorityQueue;
 
 
 public class ServerThread implements Runnable {
 
   private NodeDS node = null;
+  private PriorityQueue<String[]> writeRequests;
+  Comparator<String[]> comparator;
   private int serverTimeStamp = -1;
   int totalNodesMessages[];
   private ServerSocket serverSock; 
@@ -21,7 +27,9 @@ public class ServerThread implements Runnable {
    public ServerThread(Object parameter) {
        // store parameter for later user
 	   node = (NodeDS)parameter;
-	   totalNodesMessages = new int[node.getMaxClientsCount()];
+	   writeRequests = new PriorityQueue<String[]>();
+	   comparator = new TotalOrderingComparator();
+	  // totalNodesMessages = new int[node.getMaxClientsCount()];
 		try {
 			serverSock = new ServerSocket(Integer.parseInt(node.getNodes().get(node.getNodeId())[1]));
 		} catch (NumberFormatException e) {
@@ -47,6 +55,20 @@ public class ServerThread implements Runnable {
 	   serverTimeStamp = node.getTimeStamp();
 	   serverTimeStamp++;
 	   node.setTimeStamp(serverTimeStamp);
+   }
+   
+   public void processWrites()
+   {
+	   while(writeRequests.size()>0)
+	   {
+		   String[] messageParts = writeRequests.remove();
+		   Integer objHashCode = Integer.parseInt(messageParts[3]);
+		   Map<Integer,Integer> objStore = node.getObjectStore();
+		   if(objStore.containsKey(objHashCode))
+			 node.updateObjectStore(objHashCode);
+		   else
+			 node.writeToObjectStore(objHashCode);
+	   }
    }
    
    public void startServer()
@@ -91,7 +113,28 @@ public class ServerThread implements Runnable {
 				System.out.println("Server timestamp: "+node.getTimeStamp()+" Client says: " + message);
 				System.out.println("Server timestamp: "+node.getTimeStamp()+" max of message from client "+messageParts[1]+" and server "+node.getNodeId()+" timestamp");
 				
-			
+				if(messageParts[2].equals("readReply"))
+				{
+					node.setIsObjectRead(true);
+					node.setObjectValue(Integer.parseInt(messageParts[3]));
+				}
+				else if(messageParts[2].equals("read"))
+				{
+					Integer objHashCode = Integer.parseInt(messageParts[3]);
+					Integer nodeId = Integer.parseInt(messageParts[1]);
+					Map<Integer,Integer> objStore = node.getObjectStore();
+					node.sendReply(objStore.get(objHashCode),nodeId);
+				}
+				else if(messageParts[2].equals("write"))
+				{
+					//writeRequests.add(messageParts);
+					   Integer objHashCode = Integer.parseInt(messageParts[3]);
+					   Map<Integer,Integer> objStore = node.getObjectStore();
+					   if(objStore.containsKey(objHashCode))
+						 node.updateObjectStore(objHashCode);
+					   else
+						 node.writeToObjectStore(objHashCode);
+				}
 				sock.close();
 			}
 		}
