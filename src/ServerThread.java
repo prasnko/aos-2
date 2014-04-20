@@ -24,6 +24,17 @@ public class ServerThread implements Runnable {
   int totalNodesMessages[];
   private ServerSocket serverSock; 
   private Socket clientSocket = null;
+  private Object writeReqLock = new Object();
+  private Object writeReqCodeLock = new Object();
+  
+  public PriorityQueue<String[]> getWriteRequests()
+  {
+	synchronized(writeReqLock)
+	{
+		return writeRequests;
+	}
+  }
+  
    public ServerThread(Object parameter) {
        // store parameter for later user
 	   node = (NodeDS)parameter;
@@ -39,7 +50,6 @@ public class ServerThread implements Runnable {
 			// TODO Auto-generated catch block
 			e.printStackTrace();
 		}
-	
    }
    
    public int max(int x, int y)
@@ -59,15 +69,18 @@ public class ServerThread implements Runnable {
    
    public void processWrites()
    {
-	   while(writeRequests.size()>0)
+	   synchronized(writeReqCodeLock)
 	   {
-		   String[] messageParts = writeRequests.remove();
-		   Integer objHashCode = Integer.parseInt(messageParts[3]);
-		   Map<Integer,Integer> objStore = node.getObjectStore();
-		   if(objStore.containsKey(objHashCode))
-			 node.updateObjectStore(objHashCode);
-		   else
-			 node.writeToObjectStore(objHashCode);
+		   while(getWriteRequests().size()>0)
+		   {
+			   String[] messageParts = getWriteRequests().remove();
+			   Integer objHashCode = Integer.parseInt(messageParts[3]);
+			   Map<Integer,Integer> objStore = node.getObjectStore();
+			   if(objStore.containsKey(objHashCode))
+				 node.updateObjectStore(objHashCode);
+			   else
+				 node.writeToObjectStore(objHashCode);
+		   }
 	   }
    }
    
@@ -123,11 +136,16 @@ public class ServerThread implements Runnable {
 					Integer objHashCode = Integer.parseInt(messageParts[3]);
 					Integer nodeId = Integer.parseInt(messageParts[1]);
 					Map<Integer,Integer> objStore = node.getObjectStore();
-					node.sendReply(objStore.get(objHashCode),nodeId);
+					node.sendReadReply(objStore.get(objHashCode),nodeId);
 				}
 				else if(messageParts[2].equals("write"))
 				{
-					//writeRequests.add(messageParts);
+				  /*synchronized(writeReqCodeLock)
+				  {
+					writeRequests.add(messageParts);
+					if(writeRequests.size()>=5)
+						processWrites();
+				  }*/
 					   Integer objHashCode = Integer.parseInt(messageParts[3]);
 					   Map<Integer,Integer> objStore = node.getObjectStore();
 					   if(objStore.containsKey(objHashCode))

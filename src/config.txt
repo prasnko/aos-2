@@ -1,0 +1,13 @@
+12 
+0 net19.utdallas.edu 6758 # Location of node 0
+1 net21.utdallas.edu 8798 # Location of node 1
+2 net20.utdallas.edu 4356 # Location of node 2
+3 net23.utdallas.edu 8647 # Location of node 3
+4 net22.utdallas.edu 9786 # Location of node 4
+5 net24.utdallas.edu 7679 # Location of node 4
+6 net26.utdallas.edu 4567 # Location of node 4
+7 net27.utdallas.edu 4648 # Location of node 4
+8 net28.utdallas.edu 7476 # Location of node 4
+9 net29.utdallas.edu 5769 # Location of node 4
+10 net30.utdallas.edu 7476 # Location of node 4
+11 net31.utdallas.edu 5769 # Location of node 4

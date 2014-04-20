@@ -19,6 +19,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Queue;
 import java.util.TreeMap;
+import java.util.concurrent.TimeUnit;
 
 
 public class NodeDS {
@@ -212,7 +213,18 @@ public class NodeDS {
 		}
 	}
 	
-
+	public void increaseTimeStamp()
+	{
+		synchronized(this.getTsCodeLock())
+		{
+			clientTimeStamp = this.getTimeStamp();
+			clientTimeStamp++;
+			this.setTimeStamp(clientTimeStamp);
+		}
+			
+	}
+	
+	// Reads all node ids with corresponding ip address and socket number 
 	public void readConfig()
 	{
 		BufferedReader br = null;
@@ -258,36 +270,103 @@ public class NodeDS {
 		
 	}
 	
-	public int max(int x, int y)
-	{
-		if(x>y)
-			return x;
-		else
-			return y;
-	}
 	
 	
-	public void increaseTimeStamp()
-	{
-		synchronized(this.getTsCodeLock())
-		{
-			clientTimeStamp = this.getTimeStamp();
-			clientTimeStamp++;
-			this.setTimeStamp(clientTimeStamp);
-		}
-			
-	}
 	
-	public int[] HashObjectToServer(int id)
+	/* Object Functions */
+
+	// Based on object hashcode gets server to map to for reading and writing
+	public ArrayList<Integer> HashObjectToServer(int id)
 	{
+		ArrayList<Integer> indexes =new ArrayList<Integer>();
 		//int id = System.identityHashCode(O);
 		int index1 = id%7;
 		int index2 = (id+1)%7;
 		int index3 = (id+2)%7;
-		int indexes[] = {index1,index2,index3};
+		//int indexes[] = {index1,index2,index3};
+		indexes.add(index1);
+		indexes.add(index2);
+		indexes.add(index3);
 		return indexes;
 	}
 	
+	// For creating new object to get the hashcode 
+	public int createNewObject()
+	{
+		Object obj = new Object();
+		//System.out.println("Original Hashcode: "+ System.identityHashCode(obj));
+		int objectCode = System.identityHashCode(obj);
+		System.out.println("Object Code: "+ System.identityHashCode(obj));
+		try(PrintWriter out = new PrintWriter(new BufferedWriter(new FileWriter("objects.txt", true)))) {
+		    out.println(objectCode);
+		}catch (IOException e) {
+		    //exception handling left as an exercise for the reader
+		}
+		return objectCode;
+	}
+	
+	// Initially store the objects on the server
+	public void writeObjectsToFile()
+	{
+		if(this.nodeId==7)
+		{	
+			int maxObjects = Util.randomInRange(10,18);
+			for(int i=0;i<maxObjects;i++)
+			{
+				int objectCode = createNewObject();
+				Write(objectCode);
+			}
+		}
+	}
+	
+	// For clients to read all objects 
+	public ArrayList<Integer> readAllObjects()
+	{
+		ArrayList<Integer> objects = new ArrayList<Integer>();
+		BufferedReader br = null;
+		try {
+			br = new BufferedReader(new FileReader("objects.txt"));
+		} catch (FileNotFoundException e2) {
+			// TODO Auto-generated catch block
+			e2.printStackTrace();
+		}
+		//	this.initialize(attributes, numberOfInstances);		
+		String line = null;
+		try {
+			line = br.readLine();
+		} catch (IOException e1) {
+			// TODO Auto-generated catch block
+			e1.printStackTrace();
+		}
+		int i = 0;
+		while(line != null){
+			System.out.println(line);
+				line = line.trim();
+				//line = line.split("#")[0];
+				//int[] newInstance = new int[attributes];			
+				String[] words = line.split("\\s+");
+				objects.add(Integer.parseInt(words[0]));
+			 try {
+					line = br.readLine();
+				} catch (IOException e) {
+					// TODO Auto-generated catch block
+					e.printStackTrace();
+				}
+		}
+		try {
+			br.close();
+		} catch (IOException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+		setMaxObjectsCount(objects.size());
+		System.out.println("max object count: "+getMaxObjectsCount());
+		return objects;
+	}
+	
+	/* Object Store functions*/
+	
+	// On the server, gets the object and version number of the object on that particular server
 	public Map<Integer,Integer> getObjectStore()
 	{
 		BufferedReader br = null;
@@ -336,6 +415,7 @@ public class NodeDS {
 		return objectStore;
 	}
 	
+	// On the server, writes the object and the initial version number of the object on that particular server
 	public void writeToObjectStore(int objectCode)
 	{
 		try(PrintWriter out = new PrintWriter(new BufferedWriter(new FileWriter(this.nodeId+".txt", true)))) {
@@ -345,21 +425,7 @@ public class NodeDS {
 		}
 	}
 	
-	public int createNewObject()
-	{
-		Object obj = new Object();
-		System.out.println("Original Hashcode: "+ System.identityHashCode(obj));
-		int objectCode = System.identityHashCode(obj);
-		System.out.println("Object Code: "+ System.identityHashCode(obj));
-		try(PrintWriter out = new PrintWriter(new BufferedWriter(new FileWriter("objects.txt", true)))) {
-		    out.println(objectCode);
-		}catch (IOException e) {
-		    //exception handling left as an exercise for the reader
-		}
-		return objectCode;
-	}
-	
-	
+	// On the server, updates the object version number on that particular server
 	public void updateObjectStore(int objectCode)
 	{
 		 try {
@@ -402,20 +468,84 @@ public class NodeDS {
 	}
 	
 	
+	//Socket clientSocket = null;
+
 	
-	
-	public void writeObjectsToFile()
+	// Approach 1: Will require 6 server and 4 client threads for each server and 3 client threads for each client 
+	/*public void makeConnections()
 	{
-		int maxObjects = randomInRange(2,8);
-		for(int i=0;i<maxObjects;i++)
+		if(this.getNodeId()<7)	//if server then make connections to all other nodes
 		{
-			int objectCode = createNewObject();
-			Write(objectCode);
+			for(int i=0;i<11;i++)
+				if(i!=this.getNodeId())
+					connectNode(i);
 		}
-	}
+		else 	// else if client then make connections to all servers
+		{
+			for(int i=0;i<7;i++)
+				connectNode(i);
+		}			
+	}*/
+	
+	
 	
 
 	
+	
+	
+	/* Connect, Read Write
+	 * 
+	 */
+	
+	// making connections through boolean array to be used for physical connections as needed in code
+	public void connectAllNodes()
+	{
+		//if this node is server, connect it to all nodes
+		if(this.nodeId<7)
+		{
+			for(int i=0;i<isNodeConnected.length;i++)
+			{
+				isNodeConnected[i] = true;
+			}
+		}
+		//if this node is client, connect it to all servers
+		else
+		{
+			for(int i=0;i<isNodeConnected.length;i++)
+			{
+				if(i<7)
+					isNodeConnected[i] = true;
+				else
+					isNodeConnected[i] = false;
+			}
+		}
+	}
+	
+	// Making physical socket connection to node index
+	public Socket connectNode(int index)
+	{
+		
+		try {
+			//final int timeOut = (int)TimeUnit.SECONDS.toMillis(10); // 5 sec wait period
+			clientSocket = new Socket(this.getNodes().get(index)[0],Integer.parseInt(this.getNodes().get(index)[1]));
+		} catch (NumberFormatException e1) {
+			// TODO Auto-generated catch block
+			//e1.printStackTrace();
+			return null;
+		} catch (UnknownHostException e1) {
+			// TODO Auto-generated catch block
+			//e1.printStackTrace();
+			return null;
+		} catch (IOException e1) {
+			// TODO Auto-generated catch block
+			//e1.printStackTrace();
+			return null;
+		}
+		System.out.println("Connecting to Server on host: "+this.getNodes().get(index)[0]+" port: "+Integer.parseInt(this.getNodes().get(index)[1]));
+		return clientSocket;
+	}
+	
+	// Read method to read object version from server
 	public void Read(int objectCode)
 	{
 		//if atleast one replica alive randomly choose a replica  of the object and read the data
@@ -430,55 +560,63 @@ public class NodeDS {
 		//   for each node n in (connectedNodes[this.nodeId] -- from faultConfig)
 		//   { connectNode(n)
 		//	  read data from server n }
-			
-		int[] indexes = HashObjectToServer(objectCode);
-		for(int i=0;i<indexes.length;i++)
+		
+		boolean objectRead = false;
+		ArrayList<Integer> indexes = HashObjectToServer(objectCode);
+		while(!objectRead)
 		{
-			if(isNodeConnected[i])
+			for(int i=0;i<indexes.size();i++)
 			{
-				synchronized(this.getTsCodeLock())
+				if(isNodeConnected[indexes.get(i)])
 				{
-					increaseTimeStamp();
-				}
-				connectNode(i);
-				synchronized(this.getTsCodeLock())
-				{
-					increaseTimeStamp();
-				}
-				//read object
-				PrintWriter writer = null;
-				try {
-					writer = new PrintWriter(clientSocket.getOutputStream());
-				} catch (IOException e) {
-					// TODO Auto-generated catch block
-					e.printStackTrace();
-				}
-				//
-				/*synchronized(getCnCodeLock())
-				{	
-					if(!getConnectedNodes().containsKey(index))
+					synchronized(this.getTsCodeLock())
 					{
-						getConnectedNodes().put(index,this.getTimeStamp());
-						System.out.println("Client timestamp: "+this.getTimeStamp()+" Placing Node "+index+" in request queue of "+this.getNodeId());
+						increaseTimeStamp();
 					}
-				}*/
-				//increaseTimeStamp();
-				System.out.println("Client timestamp: "+this.getTimeStamp()+" Node "+this.getNodeId()+" sending request to node "+i);
-				synchronized(this.getTsCodeLock())
-				{
-					increaseTimeStamp();
-				}
-				writer.println(getTimeStamp()+":"+this.getNodeId()+":read:"+objectCode);
-				writer.close();		
-				while(true)
-				{
-					if(getIsObjectRead())
+					Socket clientSocket = connectNode(indexes.get(i));
+					if(clientSocket == null)
+						continue;
+					synchronized(this.getTsCodeLock())
 					{
-						System.out.println("Read Object Value: "+getObjectValue());
-						break;
+						increaseTimeStamp();
 					}
+					//read object
+					PrintWriter writer = null;
+					try {
+						writer = new PrintWriter(clientSocket.getOutputStream());
+					} catch (IOException e) {
+						// TODO Auto-generated catch block
+						e.printStackTrace();
+					}
+					//
+					/*synchronized(getCnCodeLock())
+					{	
+						if(!getConnectedNodes().containsKey(index))
+						{
+							getConnectedNodes().put(index,this.getTimeStamp());
+							System.out.println("Client timestamp: "+this.getTimeStamp()+" Placing Node "+index+" in request queue of "+this.getNodeId());
+						}
+					}*/
+					//increaseTimeStamp();
+					System.out.println("Client timestamp: "+this.getTimeStamp()+" Node "+this.getNodeId()+" sending READ request to node "+indexes.get(i));
+					synchronized(this.getTsCodeLock())
+					{
+						increaseTimeStamp();
+					}
+					writer.println(getTimeStamp()+":"+this.getNodeId()+":read:"+objectCode);
+					writer.close();		
+					while(true)
+					{
+						// Waiting for object value to be returned to receiver thread from server
+						if(getIsObjectRead())
+						{
+							System.out.println("Object: "+objectCode+" Value: "+getObjectValue());
+							objectRead = true;
+							break;
+						}
+					}
+					break;
 				}
-				break;
 			}
 		}
 	/*	if( connectedNodes.size()>0)
@@ -490,6 +628,51 @@ public class NodeDS {
 		}	*/	
 	}
 	
+	// Method on server to send read reply of object version from server to requesting client
+	public void sendReadReply(Integer objectValue,Integer nodeId)
+	{
+		Socket clientSocket = null;
+		boolean sentReply = false;
+		while(sentReply == false)
+		{	
+			clientSocket = connectNode(nodeId);
+			if(clientSocket==null)
+				continue;
+	    	//write object to j
+	    	  PrintWriter writer = null;
+				try {
+					writer = new PrintWriter(clientSocket.getOutputStream());
+				} catch (IOException e) {
+					// TODO Auto-generated catch block
+					e.printStackTrace();
+				}
+				//
+				
+				synchronized(this.getTsCodeLock())
+				{
+					increaseTimeStamp();
+				}
+				/*synchronized(getCnCodeLock())
+				{	
+					if(!getConnectedNodes().containsKey(index))
+					{
+						getConnectedNodes().put(index,this.getTimeStamp());
+						System.out.println("Client timestamp: "+this.getTimeStamp()+" Placing Node "+index+" in request queue of "+this.getNodeId());
+					}
+				}*/
+				//increaseTimeStamp();
+				System.out.println("Server timestamp: "+this.getTimeStamp()+" Node "+this.getNodeId()+" sending reply to node "+nodeId);
+				synchronized(this.getTsCodeLock())
+				{
+					increaseTimeStamp();
+				}
+				writer.println(getTimeStamp()+":"+this.getNodeId()+":readReply:"+objectValue);
+				sentReply = true;
+				writer.close();		
+		}
+	}
+	
+	// Method on client to WRITE or UPDATE object version on server based on hashcode response
 	public void Write(int objectCode)
 	{
 		//if atleast 2 replicas present update object value on both of them
@@ -508,62 +691,82 @@ public class NodeDS {
 		//   { connectNode(n)
 		//	  write data to server n}
 		ArrayList<Integer> connectedNodes = new ArrayList<Integer>();
-		int[] indexes = HashObjectToServer(objectCode);
-		for(int i=0;i<indexes.length;i++)
+		ArrayList<Integer> indexes = HashObjectToServer(objectCode);
+		for(int i=0;i<indexes.size();i++)
 		{
-			if(isNodeConnected[i])
+			if(isNodeConnected[indexes.get(i)])
 			{
-				connectedNodes.add(i);
+				connectedNodes.add(indexes.get(i));
 			}
 		}
-		if(connectedNodes.size()>=2)
+		int objectWrittenCount = 0;
+		boolean objectWritten[] = {false,false,false};
+		while((objectWrittenCount<3 && connectedNodes.size()==3)||((objectWrittenCount<2 && connectedNodes.size()==2)))
 		{
-	      for(int j=0;j<connectedNodes.size();j++)	
-	      {
-	    	  connectNode(j);
-	    	//write object to j
-	    	  PrintWriter writer = null;
-				try {
-					writer = new PrintWriter(clientSocket.getOutputStream());
-				} catch (IOException e) {
-					// TODO Auto-generated catch block
-					e.printStackTrace();
-				}
-				//
-				synchronized(this.getTsCodeLock())
-				{
-					increaseTimeStamp();
-				}
-				/*synchronized(getCnCodeLock())
-				{	
-					if(!getConnectedNodes().containsKey(index))
-					{
-						getConnectedNodes().put(index,this.getTimeStamp());
-						System.out.println("Client timestamp: "+this.getTimeStamp()+" Placing Node "+index+" in request queue of "+this.getNodeId());
+		      for(int j=0;j<connectedNodes.size();j++)	
+		      {
+		    	  if(!objectWritten[connectedNodes.get(j)])
+		    	  {
+		    	  Socket clientSocket = connectNode(connectedNodes.get(j));
+		    	  if(clientSocket==null)
+		    		  continue;
+		    	//write object to j
+		    	  PrintWriter writer = null;
+					try {
+						writer = new PrintWriter(clientSocket.getOutputStream());
+					} catch (IOException e) {
+						// TODO Auto-generated catch block
+						e.printStackTrace();
 					}
-				}*/
-				//increaseTimeStamp();
-				System.out.println("Client timestamp: "+this.getTimeStamp()+" Node "+this.getNodeId()+" sending request to node "+j);
-				synchronized(this.getTsCodeLock())
-				{
-					increaseTimeStamp();
-				}
-				writer.println(getTimeStamp()+":"+this.getNodeId()+":write:"+objectCode);
-				writer.close();		
-	      }
+					//
+					synchronized(this.getTsCodeLock())
+					{
+						increaseTimeStamp();
+					}
+					/*synchronized(getCnCodeLock())
+					{	
+						if(!getConnectedNodes().containsKey(index))
+						{
+							getConnectedNodes().put(index,this.getTimeStamp());
+							System.out.println("Client timestamp: "+this.getTimeStamp()+" Placing Node "+index+" in request queue of "+this.getNodeId());
+						}
+					}*/
+					//increaseTimeStamp();
+					System.out.println("Client timestamp: "+this.getTimeStamp()+" Node "+this.getNodeId()+" sending WRITE request to node "+connectedNodes.get(j));
+					synchronized(this.getTsCodeLock())
+					{
+						increaseTimeStamp();
+					}
+					writer.println(getTimeStamp()+":"+this.getNodeId()+":write:"+objectCode);
+					objectWritten[connectedNodes.get(j)] = true;
+					writer.close();		
+		    	  }
+		      }
 		}
 	}
 	
-	public void readFaultsConfig()
+	
+	/* Fault Creation and Handling */
+	
+	// read/write scenarios
+	public void runTestScenario(ArrayList<Integer> objectCodes, int totalTests)
 	{
-		//scenarios for creating faults
+		int index; 
+		for(int i=0;i<totalTests;i++)
+		{
+			index = Util.randomInRange(0,objectCodes.size()-1);
+			Read(objectCodes.get(index));
+			//index = randomInRange(0,objectCodes.size()-1);
+			//Write(objectCodes.get(index));
+		}
 	}
 	
-	public int randomInRange(int minimum,int maximum)
+	 public void readFaultsConfig()
 	{
-		int randomNum = minimum + (int)(Math.random()*maximum);
-		return randomNum;
+		//scenarios for creating faults i.e. reading partition1 and partition2 arrays for partitionNetwork method
 	}
+	
+	
 	
 	public void runFaultScenario()
 	{
@@ -577,12 +780,12 @@ public class NodeDS {
 		int[] partition2 = {1,3,5,7,9,11};
 		partitionNetwork(partition1,partition2);
 		
-		breakLink(2,10);
+		//breakLink(2,10);
 	}
 	
 	public void breakLink(int node1,int node2)
 	{
-		int numPart1 = randomInRange(2,6);
+		int numPart1 = Util.randomInRange(2,6);
 		int numPart2 = 12 - numPart1;
 		ArrayList<Integer> nodeIds = new ArrayList<Integer>();
 		ArrayList<Integer> partition1 = new ArrayList<Integer>();
@@ -596,9 +799,9 @@ public class NodeDS {
 		int totalAvailableClients = 4;
 		if(node1<7)
 		{
-			part2Servers = randomInRange(1,numPart2-1);
+			part2Servers = Util.randomInRange(1,numPart2-1);
 			part2Clients = numPart2 - part2Servers;
-			part1Clients = randomInRange(1,numPart1-1);
+			part1Clients = Util.randomInRange(1,numPart1-1);
 			part1Servers = numPart1 - part1Clients;
 		}
 		
@@ -607,7 +810,7 @@ public class NodeDS {
 			int newNode; 
 			do
 			{
-			 newNode = randomInRange(0,6);
+			 newNode = Util.randomInRange(0,6);
 			}while(partition2.contains(newNode)||partition1.contains(newNode));
 			partition1.add(newNode);
 		}
@@ -616,7 +819,7 @@ public class NodeDS {
 			int newNode; 
 			do
 			{
-			 newNode = randomInRange(0,6);
+			 newNode = Util.randomInRange(0,6);
 			}while(partition2.contains(newNode)||partition1.contains(newNode));
 			partition2.add(newNode);
 		}
@@ -625,7 +828,7 @@ public class NodeDS {
 			int newNode; 
 			do
 			{
-			 newNode = randomInRange(7,11);
+			 newNode = Util.randomInRange(7,11);
 			}while(partition2.contains(newNode)||partition1.contains(newNode));
 			partition1.add(newNode);
 		}
@@ -634,7 +837,7 @@ public class NodeDS {
 			int newNode; 
 			do
 			{
-			 newNode = randomInRange(7,11);
+			 newNode = Util.randomInRange(7,11);
 			}while(partition2.contains(newNode)||partition1.contains(newNode));
 			partition2.add(newNode);
 		}
@@ -703,21 +906,12 @@ public class NodeDS {
 				
 			}
 		}*/
-		int[] part1 = convertIntegers(partition1);
-		int[] part2 = convertIntegers(partition2);
+		int[] part1 = Util.convertIntegers(partition1);
+		int[] part2 = Util.convertIntegers(partition2);
 		partitionNetwork(part1,part2);		
 	}
 	
-	public int[] convertIntegers(List<Integer> integers)
-	{
-	    int[] ret = new int[integers.size()];
-	    Iterator<Integer> iterator = integers.iterator();
-	    for (int i = 0; i < ret.length; i++)
-	    {
-	        ret[i] = iterator.next().intValue();
-	    }
-	    return ret;
-	}
+	
 	
 	public void partitionNetwork(int[] partition1,int[] partition2)
 	{
@@ -748,136 +942,10 @@ public class NodeDS {
 				isNodeConnected[partition2[j]]=false;
 			}
 		}
-	}
-	//Socket clientSocket = null;
-	public void connectNode(int index)
-	{
-		
-		try {
-			clientSocket = new Socket(this.getNodes().get(index)[0],Integer.parseInt(this.getNodes().get(index)[1]));
-		} catch (NumberFormatException e1) {
-			// TODO Auto-generated catch block
-			e1.printStackTrace();
-		} catch (UnknownHostException e1) {
-			// TODO Auto-generated catch block
-			e1.printStackTrace();
-		} catch (IOException e1) {
-			// TODO Auto-generated catch block
-			e1.printStackTrace();
-		}
-		System.out.println("Connecting to Server on host: "+this.getNodes().get(index)[0]+" port: "+Integer.parseInt(this.getNodes().get(index)[1]));
-	
-	}
-	
-	// Approach 1: Will require 6 server and 4 client threads for each server and 3 client threads for each client 
-	public void makeConnections()
-	{
-		if(this.getNodeId()<7)	//if server then make connections to all other nodes
-		{
-			for(int i=0;i<11;i++)
-				if(i!=this.getNodeId())
-					connectNode(i);
-		}
-		else 	// else if client then make connections to all servers
-		{
-			for(int i=0;i<7;i++)
-				connectNode(i);
-		}			
-	}
-	
-	public void runTestScenario(ArrayList<Integer> objectCodes, int totalTests)
-	{
-		int index; 
-		for(int i=0;i<totalTests;i++)
-		{
-			index = randomInRange(0,objectCodes.size()-1);
-			Read(objectCodes.get(index));
-			//index = randomInRange(0,objectCodes.size()-1);
-			//Write(objectCodes.get(index));
-		}
-	}
-	
-	public void sendReply(Integer objectValue,Integer nodeId)
-	{
-		  connectNode(nodeId);
-	    	//write object to j
-	    	  PrintWriter writer = null;
-				try {
-					writer = new PrintWriter(clientSocket.getOutputStream());
-				} catch (IOException e) {
-					// TODO Auto-generated catch block
-					e.printStackTrace();
-				}
-				//
-				increaseTimeStamp();
-				/*synchronized(getCnCodeLock())
-				{	
-					if(!getConnectedNodes().containsKey(index))
-					{
-						getConnectedNodes().put(index,this.getTimeStamp());
-						System.out.println("Client timestamp: "+this.getTimeStamp()+" Placing Node "+index+" in request queue of "+this.getNodeId());
-					}
-				}*/
-				//increaseTimeStamp();
-				System.out.println("Server timestamp: "+this.getTimeStamp()+" Node "+this.getNodeId()+" sending reply to node "+nodeId);
-				synchronized(this.getTsCodeLock())
-				{
-					increaseTimeStamp();
-				}
-				writer.println(getTimeStamp()+":"+this.getNodeId()+":readReply:"+objectValue);
-				writer.close();		
-	}
-	
-	public ArrayList<Integer> readAllObjects()
-	{
-		ArrayList<Integer> objects = new ArrayList<Integer>();
-		BufferedReader br = null;
-		try {
-			br = new BufferedReader(new FileReader("objects.txt"));
-		} catch (FileNotFoundException e2) {
-			// TODO Auto-generated catch block
-			e2.printStackTrace();
-		}
-		//	this.initialize(attributes, numberOfInstances);		
-		String line = null;
-		try {
-			line = br.readLine();
-		} catch (IOException e1) {
-			// TODO Auto-generated catch block
-			e1.printStackTrace();
-		}
-		int i = 0;
-		while(line != null){
-			System.out.println(line);
-				line = line.trim();
-				//line = line.split("#")[0];
-				//int[] newInstance = new int[attributes];			
-				String[] words = line.split("\\s+");
-				objects.add(Integer.parseInt(words[0]));
-			 try {
-					line = br.readLine();
-				} catch (IOException e) {
-					// TODO Auto-generated catch block
-					e.printStackTrace();
-				}
-		}
-		try {
-			br.close();
-		} catch (IOException e) {
-			// TODO Auto-generated catch block
-			e.printStackTrace();
-		}
-		setMaxObjectsCount(objects.size());
-		System.out.println("max object count: "+getMaxObjectsCount());
-		return objects;
-	}
-	public void connectAllNodes()
-	{
-		for(int i=0;i<isNodeConnected.length;i++)
-		{
-			isNodeConnected[i] = true;
-		}
-	}
+	} 
+	  
+	  
+	 
 	
 	public static void main(String args[])
 	{
@@ -912,7 +980,7 @@ public class NodeDS {
 		System.out.println("Starting client at node: "+node.getNodeId());
 		if(node.getNodeId()>6)
 		{
-			node.writeObjectsToFile();
+			//node.writeObjectsToFile();
 			try {
 				Thread.sleep(45000);
 			} catch (InterruptedException e) {
